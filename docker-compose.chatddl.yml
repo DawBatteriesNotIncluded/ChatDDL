@@ -1,0 +1,75 @@
+name: chatddl
+
+services:
+  api:
+    container_name: chatDDL
+    image: registry.librechat.ai/danny-avila/librechat-dev:latest
+    restart: always
+    depends_on:
+      - mongodb
+      - rag_api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3081:3080"
+    environment:
+      - HOST=0.0.0.0
+      - MONGO_URI=mongodb://mongodb:27017/LibreChat
+      - MEILI_HOST=http://meilisearch:7700
+      - RAG_PORT=${RAG_PORT:-8000}
+      - RAG_API_URL=http://rag_api:${RAG_PORT:-8000}
+    volumes:
+      - type: bind
+        source: ./.env
+        target: /app/.env
+      - type: bind
+        source: ./librechat.yaml
+        target: /app/librechat.yaml
+      - ./images:/app/client/public/images
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+
+  mongodb:
+    container_name: chatDDL-mongodb
+    image: mongo:8.0.20
+    restart: always
+    volumes:
+      - ./data-node:/data/db
+    command: mongod --noauth
+
+  meilisearch:
+    container_name: chatDDL-meilisearch
+    image: getmeili/meilisearch:v1.35.1
+    restart: always
+    environment:
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+    volumes:
+      - ./meili_data_v1.35.1:/meili_data
+
+  vectordb:
+    container_name: chatDDL-vectordb
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    restart: always
+    environment:
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    volumes:
+      - pgdata2:/var/lib/postgresql/data
+
+  rag_api:
+    container_name: chatDDL-rag-api
+    image: registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite:latest
+    restart: always
+    depends_on:
+      - vectordb
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=vectordb
+      - RAG_PORT=${RAG_PORT:-8000}
+
+volumes:
+  pgdata2:
